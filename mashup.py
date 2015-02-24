@@ -4,6 +4,7 @@ import json
 import re
 import requests
 import sys
+import collections
 import argparse
 
 
@@ -130,7 +131,7 @@ def result_generator(count):
     parsed = parse_source(html, encoding)
     content_col = parsed.find("td", id="contentcol")
     data_list = restaurant_data_generator(content_col)
-    for data_div in data_list[:count]:
+    for data_div in data_list: #[:count]:
         metadata = extract_restaurant_metadata(data_div)
         inspection_data = get_score_data(data_div)
         metadata.update(inspection_data)
@@ -157,33 +158,38 @@ def get_geojson(result):
     geojson['properties'] = inspection_data
     return geojson
 
+
 def add_color_marker(total_result):
     avg_min, avg_max = sys.maxint,-sys.maxint-1
+
     for avg in (restaurant['properties']['Average Score'] for restaurant in total_result['features']):
          avg_min, avg_max = min(avg, avg_min),max(avg, avg_max)
+
     red, yellow, green = [int((rgb + 1) * ((avg_max - avg_min) / 3) + avg_min) for rgb in range(3)]
 
+    marker_colors = collections.OrderedDict(sorted({red: '#FF0000', yellow: '#FFFF00', green: '#00FF00'}.items(),
+                                                  key=lambda t: t[0], reverse=True))
+
     for restaurant in total_result['features']:
-        if restaurant['properties']['Average Score'] < red:
-            restaurant['properties']['marker-color'] = '#FF0000'
-        elif restaurant['properties']['Average Score'] < yellow:
-            restaurant['properties']['marker-color'] = '#FFFF00'
-        else:                                        # green
-            restaurant['properties']['marker-color'] = '#00FF00'
+        for key, value in marker_colors.iteritems():
+            marker_color = value if restaurant['properties']['Average Score'] < key else marker_color
+
+        restaurant['properties']['marker-color'] = marker_color
 
     return total_result
 
 if __name__ == '__main__':
     # argparse arguments here
-    # parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()
     # parser.add_argument("--orderby", help="Order By")
-    # parser.add_argument("--numberofresults", help="Number Of Results")
+    parser.add_argument("--count", help="Number Of Results")
     # parser.add_argument("-r", type= help="Asc or Desc")
-    # args = parser.parse_args()
+    args = parser.parse_args()
     # order_by = args.orderby
+    count = int(args.count)
 
     total_result = {'type': 'FeatureCollection', 'features': []}
-    for result in result_generator(10):
+    for result in result_generator(count):
         geojson = get_geojson(result)
         total_result['features'].append(geojson)
 
